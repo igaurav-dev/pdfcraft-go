@@ -253,3 +253,48 @@ func TestGeneratedContractIsPresent(t *testing.T) {
 		t.Error("quota_exceeded missing from the generated ErrorCodes")
 	}
 }
+
+func TestScanPostsTheContractShape(t *testing.T) {
+	server, seen := serve(t, step{status: 202, body: `{"id":"scn_1","status":"queued","discovered":null}`})
+	accepted, err := mustClient(t, server.URL).Scan(context.Background(), ScanRequest{
+		Source:  ScanSource{Domain: "example.gov"},
+		Options: &ScanOptions{MaxDocuments: 500},
+	})
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if accepted.Status != "queued" {
+		t.Errorf("status = %q", accepted.Status)
+	}
+	if (*seen)[0].path != "/v1/a11y/scan" {
+		t.Errorf("path = %q", (*seen)[0].path)
+	}
+	// omitempty on every ScanSource field is what keeps an unset source out of
+	// the body. Without it we would send {"domain":"","sitemap":"","urls":null}
+	// and the API would reject it for naming three sources at once.
+	source, _ := (*seen)[0].body["source"].(map[string]any)
+	if len(source) != 1 || source["domain"] != "example.gov" {
+		t.Errorf("source = %v", source)
+	}
+}
+
+func TestScanIDsGoToTheScanEndpoint(t *testing.T) {
+	server, seen := serve(t, step{status: 200, body: `{"id":"scn_1","status":"succeeded","checked":2}`})
+	if _, err := mustClient(t, server.URL).GetScan(context.Background(), "scn_01ABC"); err != nil {
+		t.Fatalf("GetScan: %v", err)
+	}
+	if (*seen)[0].path != "/v1/a11y/scans/scn_01ABC" {
+		t.Errorf("path = %q", (*seen)[0].path)
+	}
+}
+
+func TestAccessibilityEnumsAreGenerated(t *testing.T) {
+	// A client comparing a severity against a hand-typed string silently stops
+	// matching the day a value is added.
+	if len(A11ySeverities) == 0 || A11ySeverities[0] != "blocker" {
+		t.Errorf("A11ySeverities = %v", A11ySeverities)
+	}
+	if len(ScanStatuses) == 0 || len(FindingLayers) != 2 {
+		t.Errorf("ScanStatuses = %v, FindingLayers = %v", ScanStatuses, FindingLayers)
+	}
+}

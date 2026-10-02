@@ -128,8 +128,16 @@ $(printf '%s\n' "$FMT" | sed 's/^/         /')
 ok 'gofmt clean'
 go vet ./... || die 'go vet failed'
 ok 'go vet clean'
-go test ./... >/dev/null || die 'tests failed — run "go test ./..." to see why'
-ok 'tests pass'
+# Captured and replayed on failure rather than discarded. "Run it by hand to
+# see why" is a check that tells you something is wrong and then hides the one
+# thing you need; the Python script had the same flaw and it cost a round trip.
+if ! go test ./... >"$WORK/test.log" 2>&1; then
+  printf '  \033[31mfail\033[0m tests failed:\n\n' >&2
+  sed 's/^/    /' "$WORK/test.log" >&2
+  printf '\n       re-run with:  go test ./...\n' >&2
+  exit 1
+fi
+ok "tests pass ($(go version | awk '{print $3}'))"
 
 step '8 · Build as a consumer would'
 # A fresh module that imports this one by path, with a replace pointing here.
@@ -171,7 +179,11 @@ func main() {
 	fmt.Println(pdfcraft.Version, pdfcraft.ContractHash[:8], len(pdfcraft.ErrorCodes))
 }
 EOF
-(cd "$WORK/consumer" && go build ./... ) || die 'a fresh consumer module cannot build against this package'
+if ! (cd "$WORK/consumer" && go build ./... ) >"$WORK/consumer.log" 2>&1; then
+  printf '  \033[31mfail\033[0m a fresh consumer module cannot build against this package:\n\n' >&2
+  sed 's/^/    /' "$WORK/consumer.log" >&2
+  exit 1
+fi
 ok 'an external module compiles against the public API'
 
 step '9 · Tag and push'

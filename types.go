@@ -175,3 +175,89 @@ type ExtractResponse struct {
 	TablesSuppressed int              `json:"tables_suppressed,omitempty"`
 	DurationMs       int              `json:"duration_ms"`
 }
+
+// ── accessibility ──────────────────────────────────────────────────────────
+
+// ScanSource says what to scan. Exactly one field, the same "one input" rule
+// RenderRequest enforces: a body naming two sources has no correct reading,
+// and picking one silently is how a customer scans the wrong thing.
+type ScanSource struct {
+	// Domain is a bare hostname or an origin. Sitemap first, bounded crawl as fallback.
+	Domain string `json:"domain,omitempty"`
+	// Sitemap is an explicit sitemap URL, for when it is not where we would look.
+	Sitemap string `json:"sitemap,omitempty"`
+	// URLs is an explicit list, for when you already know the documents.
+	URLs []string `json:"urls,omitempty"`
+}
+
+// ScanOptions tunes a scan within what the plan allows.
+type ScanOptions struct {
+	// MaxDocuments is clamped to the plan, never refused. The remainder is
+	// reported as Discovered minus Checked.
+	MaxDocuments int `json:"max_documents,omitempty"`
+	CrawlDepth   int `json:"crawl_depth,omitempty"`
+	// RespectRobots may only be true. robots.txt is obeyed without exception;
+	// sending false is an error rather than a setting that is quietly ignored,
+	// because believing you had turned it off would be worse than not being
+	// offered the field at all.
+	RespectRobots *bool `json:"respect_robots,omitempty"`
+}
+
+// ScanRequest starts an accessibility scan.
+type ScanRequest struct {
+	Source  ScanSource   `json:"source"`
+	Options *ScanOptions `json:"options,omitempty"`
+}
+
+// Finding is one thing wrong with one document.
+type Finding struct {
+	CheckID string `json:"check_id"`
+	// Severity is one of A11ySeverities, ordered worst first.
+	Severity string `json:"severity"`
+	// Pages is empty for a document-level finding: "not tagged" is not on a page.
+	Pages   []int  `json:"pages"`
+	Message string `json:"message"`
+	// TechnicalDetail carries the spec citation and the concrete fix.
+	TechnicalDetail string `json:"technical_detail"`
+	// Occurrences is volume, not severity. One check failing 1,535 times is one
+	// thing wrong, fixed once — never rank on this.
+	Occurrences int      `json:"occurrences"`
+	WCAG        []string `json:"wcag"`
+	// Layer is "machine" or "geometric". The second is the half a conformance
+	// validator cannot do.
+	Layer string `json:"layer"`
+}
+
+// ScanDocument is one checked PDF.
+type ScanDocument struct {
+	URL      string `json:"url"`
+	Pages    *int   `json:"pages"`
+	Severity string `json:"severity"`
+	// Score is 0-100, lower is worse, and moves with consequence rather than
+	// with the count of failed checks.
+	Score       int     `json:"score"`
+	CostLowUSD  float64 `json:"cost_low_usd"`
+	CostHighUSD float64 `json:"cost_high_usd"`
+	// Priority is severity weighted by reach. Sort on this to answer "what do
+	// I fix first" — it is the one number a single-document checker cannot give.
+	Priority float64   `json:"priority"`
+	Findings []Finding `json:"findings"`
+}
+
+// ScanResponse is a scan's progress, then its full result.
+type ScanResponse struct {
+	ID string `json:"id"`
+	// Status is one of ScanStatuses. Poll until it is terminal.
+	Status string `json:"status"`
+	// Discovered is every PDF the crawl found, which may exceed Checked when
+	// the plan capped the scan. The gap is the upgrade prompt.
+	Discovered *int `json:"discovered"`
+	Checked    int  `json:"checked"`
+	Failing    int  `json:"failing"`
+	// ReportURL is a share token. Anyone holding it can read the report with
+	// no account, so treat it as a credential.
+	ReportURL        string         `json:"report_url,omitempty"`
+	TotalCostLowUSD  float64        `json:"total_cost_low_usd,omitempty"`
+	TotalCostHighUSD float64        `json:"total_cost_high_usd,omitempty"`
+	Documents        []ScanDocument `json:"documents,omitempty"`
+}

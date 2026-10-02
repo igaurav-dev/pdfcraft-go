@@ -1,7 +1,7 @@
 # PDFCraft for Go
 
-HTML to PDF, and PDF to structured JSON, in one call. The official Go client for
-[PDFCraft](https://pdfcraft.dev).
+HTML to PDF, PDF to structured JSON, and accessibility triage for a whole document estate.
+The official Go client for [PDFCraft](https://pdfcraft.dev).
 
 **No dependencies beyond the standard library.**
 
@@ -91,6 +91,57 @@ billed. Nothing is guessed by a model, so the same document always produces the 
 
 Billed per page read — `Options: &pdfcraft.ExtractOptions{Pages: "1-3"}` narrows the bill as
 well as the work.
+
+## Accessibility
+
+Point it at a domain and it finds every PDF, checks each against PDF/UA and WCAG 2.1 AA, and
+returns a report ranked by severity weighted by reach, with a remediation cost range.
+
+```go
+scan, err := client.Scan(ctx, pdfcraft.ScanRequest{
+	Source:  pdfcraft.ScanSource{Domain: "example.gov"},
+	Options: &pdfcraft.ScanOptions{MaxDocuments: 500},
+})
+if err != nil {
+	return err
+}
+
+for scan.Status != "succeeded" && scan.Status != "failed" {
+	time.Sleep(10 * time.Second)
+	result, err := client.GetScan(ctx, scan.ID)
+	if err != nil {
+		return err
+	}
+	scan.Status = result.Status
+	scan.Documents = result.Documents
+}
+
+for _, doc := range scan.Documents[:10] { // already ranked — this is the fix list
+	fmt.Printf("%s %d/100 $%.0f-$%.0f %s\n",
+		doc.Severity, doc.Score, doc.CostLowUSD, doc.CostHighUSD, doc.URL)
+}
+```
+
+Exactly one field on `ScanSource`. Every field is `omitempty`, which is what keeps an unset
+source out of the body — without it the API would see three sources named at once and reject it.
+
+A scan runs for minutes (one request per second per host is a rule we do not break), so `Scan`
+returns an id immediately and you poll `GetScan`. `MaxDocuments` is **clamped to your plan
+rather than refused**; `Discovered` minus `Checked` is what was found and not looked at, which
+is also the upgrade prompt.
+
+`ReportURL` on a finished scan is a share token. Anyone holding it can read the full HTML
+report, and `GET /r/<token>/pdf` renders the same report to PDF through the render API — treat
+it as a credential, not an identifier.
+
+Each `Finding` carries `Severity` (`blocker`, `major`, `minor`), the `WCAG` criteria it breaks,
+a `Message` written for whoever approves the budget, and `TechnicalDetail` for whoever does the
+work. `Occurrences` is volume, not severity — one check failing 1,535 times is one thing wrong,
+fixed once, so never rank on it. Compare against the generated `A11ySeverities`, `ScanStatuses`
+and `FindingLayers` rather than string literals.
+
+Accessibility is a **separate subscription** from rendering. An account can hold either, both or
+neither, and the free tier is a real scan of 25 documents with full findings.
 
 ## Errors
 

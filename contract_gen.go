@@ -53,3 +53,27 @@ const (
 	MaxTimeoutMS     = 120000
 	DefaultTimeoutMS = 30000
 )
+
+// A11ySeverities are ordered worst first, which callers rely on for ranking.
+var A11ySeverities = []string{
+	"blocker",
+	"major",
+	"minor",
+	"pass",
+}
+
+// ScanStatuses is the scan lifecycle. Poll until the status is terminal.
+var ScanStatuses = []string{
+	"queued",
+	"crawling",
+	"checking",
+	"succeeded",
+	"failed",
+}
+
+// FindingLayers says which half found it. "geometric" is the half a
+// conformance validator cannot do.
+var FindingLayers = []string{
+	"machine",
+	"geometric",
+}

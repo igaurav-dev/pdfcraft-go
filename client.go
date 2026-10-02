@@ -29,7 +29,7 @@ import (
 )
 
 // Version is this client's version, reported in the User-Agent.
-const Version = "1.3.0"
+const Version = "1.4.0"
 
 const (
 	defaultBaseURL    = "https://api.pdfcraft.dev"
@@ -168,6 +168,35 @@ func (c *Client) ExtractAsync(ctx context.Context, req AsyncExtractRequest, idem
 // GetRender will 404 on one and this will 404 on a render id, deliberately.
 func (c *Client) GetExtraction(ctx context.Context, id string) (*StatusResponse, error) {
 	return decode[StatusResponse](c.do(ctx, http.MethodGet, "/v1/extractions/"+url.PathEscape(id), nil, ""))
+}
+
+// ── accessibility ──────────────────────────────────────────────────────────
+
+// Scan starts an accessibility scan and returns at once with an id to poll.
+//
+// A scan of a thousand documents at one request per second per host has a
+// floor measured in minutes, so there is nothing to return but an id and
+// somewhere to look:
+//
+//	scan, err := client.Scan(ctx, pdfcraft.ScanRequest{
+//		Source:  pdfcraft.ScanSource{Domain: "example.gov"},
+//		Options: &pdfcraft.ScanOptions{MaxDocuments: 500},
+//	})
+//	for scan.Status != "succeeded" && scan.Status != "failed" {
+//		time.Sleep(10 * time.Second)
+//		scan, err = client.GetScan(ctx, scan.ID)
+//	}
+//
+// MaxDocuments is clamped to your plan rather than refused; the gap shows up
+// as Discovered minus Checked.
+func (c *Client) Scan(ctx context.Context, req ScanRequest) (*Accepted, error) {
+	return decode[Accepted](c.do(ctx, http.MethodPost, "/v1/a11y/scan", req, ""))
+}
+
+// GetScan polls one scan: progress while it runs, every document ranked with
+// findings and cost once it succeeds.
+func (c *Client) GetScan(ctx context.Context, id string) (*ScanResponse, error) {
+	return decode[ScanResponse](c.do(ctx, http.MethodGet, "/v1/a11y/scans/"+url.PathEscape(id), nil, ""))
 }
 
 // RenderRaw posts an arbitrary body to /v1/render and returns the raw
